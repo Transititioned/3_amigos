@@ -115,20 +115,6 @@ function nodeMatches(node, selector) {
   return node.tagName.toLowerCase() === selector.toLowerCase();
 }
 
-/**
- * Very basic HTML string parser to create a tree of MockElements.
- */
-function parseHtmlToMock(html) {
-  const root = new MockElement('root');
-  // Simple regex-based tag extractor for our template
-  const tagRegex = /<([a-zA-Z0-9]+)([^>]*)>([\s\S]*?)<\/\1>|<([a-zA-Z0-9]+)([^>]*)\/>/g;
-  
-  // Custom builder for our known UI layout
-  // We can construct the tree based on the actual initPlayerUI template
-  return root;
-}
-
-// Better yet: define a container MockElement with mock document
 class MockContainer extends MockElement {
   constructor() {
     super('div');
@@ -144,8 +130,7 @@ class MockContainer extends MockElement {
     return this._innerHTML || '';
   }
 
-  buildFromTemplate(html) {
-    // Helper to create element with ID and classes
+  buildFromTemplate() {
     const makeEl = (tag, id, classNames, attrs = {}) => {
       const el = new MockElement(tag);
       if (id) el.setAttribute('id', id);
@@ -203,6 +188,9 @@ class MockContainer extends MockElement {
     controls.children.push(pauseBtn);
 
     const restartBtn = makeEl('button', 'btn-restart', 'btn btn-secondary');
+    const restartBtnLabel = makeEl('span', 'btn-restart-label', '');
+    restartBtnLabel.textContent = 'Restart';
+    restartBtn.children.push(restartBtnLabel);
     controls.children.push(restartBtn);
 
     const errorBanner = makeEl('div', 'error-banner', 'error-banner hidden');
@@ -379,6 +367,56 @@ test('Controls update button states, progress bar, and pause/restart', async () 
   await Promise.resolve();
   assert.equal(ui.getState(), 'playing');
   assert.equal(ui.getCurrentIndex(), 0);
+});
+
+test('Completed playback enables replay using Play button or Restart', async () => {
+  const container = new MockContainer();
+  const audios = [];
+  const ui = initPlayerUI(container, {
+    script: demoScript,
+    audioFactory: (src) => {
+      const a = new FakeAudio(src);
+      audios.push(a);
+      return a;
+    },
+  });
+
+  // Start playback
+  ui.elements.playBtn.click();
+  await Promise.resolve();
+
+  // Play through all lines to reach completed state
+  for (let i = 0; i < demoScript.lines.length; i++) {
+    audios[i].fire('ended');
+    await Promise.resolve();
+  }
+
+  // Verify completed state
+  assert.equal(ui.getState(), 'ended');
+  assert.equal(ui.elements.playBtn.disabled, false, 'Play/Replay button should be enabled');
+  assert.equal(ui.elements.playBtnLabel.textContent, 'Replay', 'Play button should be labeled Replay');
+  assert.equal(ui.elements.restartBtn.disabled, false, 'Restart button should be enabled');
+  assert.equal(ui.elements.pauseBtn.disabled, true, 'Pause button should be disabled');
+  assert.equal(ui.elements.progressFill.style.width, '100%');
+
+  // Replay using the Play button
+  ui.elements.playBtn.click();
+  await Promise.resolve();
+  assert.equal(ui.getState(), 'playing');
+  assert.equal(ui.getCurrentIndex(), 0, 'Replay via Play button should return to line 0');
+
+  // Play through to ended again
+  for (let i = 6; i < 12; i++) {
+    audios[i].fire('ended');
+    await Promise.resolve();
+  }
+  assert.equal(ui.getState(), 'ended');
+
+  // Replay using the Restart button
+  ui.elements.restartBtn.click();
+  await Promise.resolve();
+  assert.equal(ui.getState(), 'playing');
+  assert.equal(ui.getCurrentIndex(), 0, 'Replay via Restart button should return to line 0');
 });
 
 test('Error banner appears with error details when audio fails to load', async () => {

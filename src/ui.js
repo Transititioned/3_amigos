@@ -191,7 +191,7 @@ export function initPlayerUI(container, options = {}) {
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
               <path d="M3 3v5h5"/>
             </svg>
-            <span>Restart</span>
+            <span id="btn-restart-label">Restart</span>
           </button>
         </div>
 
@@ -314,26 +314,51 @@ export function initPlayerUI(container, options = {}) {
     if (nextState === 'playing') {
       playBtn.disabled = true;
       pauseBtn.disabled = false;
+      restartBtn.disabled = false;
       playBtnLabel.textContent = 'Play';
+      playBtn.setAttribute('aria-label', 'Meeting audio is playing');
       clearError();
     } else if (nextState === 'paused') {
       playBtn.disabled = false;
       pauseBtn.disabled = true;
+      restartBtn.disabled = false;
       playBtnLabel.textContent = 'Resume';
+      playBtn.setAttribute('aria-label', 'Resume playback');
     } else if (nextState === 'ended') {
-      playBtn.disabled = true;
+      // Completed state: allow replay using Play or clearly use Restart
+      playBtn.disabled = false;
       pauseBtn.disabled = true;
-      playBtnLabel.textContent = 'Play';
-      announce('Playback completed.');
+      restartBtn.disabled = false;
+      playBtnLabel.textContent = 'Replay';
+      playBtn.setAttribute('aria-label', 'Replay meeting audio from beginning');
+      restartBtn.setAttribute('aria-label', 'Restart meeting from beginning');
+
+      if (lineCounter) {
+        lineCounter.textContent = `Completed (${totalLines} lines)`;
+      }
+      if (progressFill) progressFill.style.width = '100%';
+      if (progressBar) progressBar.setAttribute('aria-valuenow', '100');
+
+      // Mark all transcript lines as played
+      transcriptLines.forEach((item) => {
+        item.classList.remove('is-active');
+        item.classList.add('is-played');
+      });
+
+      announce('Playback completed. Click Replay or Restart to listen again.');
     } else if (nextState === 'error') {
       playBtn.disabled = false;
       pauseBtn.disabled = true;
+      restartBtn.disabled = false;
       playBtnLabel.textContent = 'Retry';
+      playBtn.setAttribute('aria-label', 'Retry audio playback');
     } else {
       // idle
       playBtn.disabled = false;
       pauseBtn.disabled = true;
+      restartBtn.disabled = false;
       playBtnLabel.textContent = 'Play';
+      playBtn.setAttribute('aria-label', 'Play meeting audio');
     }
   }
 
@@ -345,6 +370,8 @@ export function initPlayerUI(container, options = {}) {
     if (lineCounter) {
       if (index >= 0 && index < totalLines) {
         lineCounter.textContent = `Line ${index + 1} of ${totalLines}`;
+      } else if (currentState === 'ended') {
+        lineCounter.textContent = `Completed (${totalLines} lines)`;
       } else {
         lineCounter.textContent = `Line -- of ${totalLines}`;
       }
@@ -380,6 +407,9 @@ export function initPlayerUI(container, options = {}) {
       } else if (index >= 0 && i < index) {
         item.classList.remove('is-active');
         item.classList.add('is-played');
+      } else if (currentState === 'ended') {
+        item.classList.remove('is-active');
+        item.classList.add('is-played');
       } else {
         item.classList.remove('is-active');
         item.classList.remove('is-played');
@@ -411,6 +441,8 @@ export function initPlayerUI(container, options = {}) {
 
   // Update Progress UI (Read-Only)
   function updateProgress({ currentTime, duration, fraction }) {
+    if (currentState === 'ended') return;
+
     const clampedFraction = Math.min(1, Math.max(0, fraction || 0));
     const percent = Math.round(clampedFraction * 100);
 
@@ -470,6 +502,7 @@ export function initPlayerUI(container, options = {}) {
     player,
     elements: {
       playBtn,
+      playBtnLabel,
       pauseBtn,
       restartBtn,
       progressBar,
