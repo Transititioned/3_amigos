@@ -12,9 +12,48 @@ service dependency.
   state, active-line, progress, and error callbacks.
 - `PLAYER_CONTRACT.md` describes the interface for presentation integration.
 
-The sample audio paths under `/audio/` are placeholders until recordings are
-provided. Missing audio is reported as a playback error; the player does not
-generate speech.
+The six prerecorded clips are bundled under `/audio/` at the paths referenced
+by `audioSrc`. Missing or unavailable audio is reported as a playback error;
+the browser player does not generate speech.
+
+The unchanged six-line first-test dialogue plays for about 32 seconds. It is a
+short integration check and does not yet meet the 90-second to 3-minute product
+target.
+
+## Generate the demo recordings
+
+The bundled MP3s are generated one clip per dialogue line by
+`scripts/generate_audio.py`, which reads the canonical dialogue directly from
+`src/player-data.js` and writes each line's existing `audioSrc` path.
+
+Voice assignments:
+
+- Mara: `en-AU-NatashaNeural` (Australian English, female)
+- Leo: `en-AU-WilliamMultilingualNeural` (Australian English, male)
+- Bea: `en-GB-SoniaNeural` (British English, female; selected because the
+  current Edge voice list exposes only two Australian English neural voices)
+
+Requires Python 3.10+, Node.js, and internet access. No API key is needed.
+
+```sh
+python -m pip install -r requirements-tts.txt
+python scripts/generate_audio.py
+```
+
+Before synthesis, the generator automatically expands common English speech
+contractions in every line, independent of speaker. The transcript remains
+unchanged. An optional `spokenText` field can supply alternate wording and
+contractions in that wording are expanded too. Regenerate only selected lines
+with:
+
+```sh
+python scripts/generate_audio.py --line-id line-4 --line-id line-5 --line-id line-6
+```
+
+Generation uses `edge-tts`, an unofficial Python client for Microsoft's online
+Edge text-to-speech service. It sends the dialogue text and selected voice to
+that online service. The clips are for this prototype; review the service's
+terms and voice distribution rights before public or commercial release.
 
 ## Run the player tests
 

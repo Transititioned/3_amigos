@@ -5,6 +5,6 @@
   "scripts": {
     "start": "node server.js",
     "smoke": "node scripts/smoke-test.js",
-    "test": "node --test"
+    "test": "node --test test/player.test.js test/server.test.js test/ui.test.js"
   }
 }

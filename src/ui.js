@@ -203,7 +203,7 @@ export function initPlayerUI(container, options = {}) {
           <div class="error-content">
             <span class="error-title">Playback Error</span>
             <p class="error-message" id="error-message"></p>
-            <span class="error-hint">Placeholder audio recordings are pending. Add audio files to /audio/ to enable speech.</span>
+            <span class="error-hint">Check the audio file and connection, then try again.</span>
           </div>
           <button type="button" class="error-dismiss-btn" id="btn-dismiss-error" aria-label="Dismiss error notification">
             Dismiss
