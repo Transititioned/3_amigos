@@ -107,6 +107,28 @@ export async function runSmokeTest() {
         );
       });
 
+    const snapshotExpression = `JSON.stringify({
+      state: document.getElementById('playback-state-text')?.textContent,
+      lineCounter: document.getElementById('line-counter')?.textContent,
+      activeIndex: document.querySelector('.transcript-line.is-active')?.dataset.lineIndex ?? null,
+      activeSpeaker: document.querySelector('.transcript-line.is-active')?.dataset.speakerId ?? null,
+      speakingSpeaker: document.querySelector('.character-card.is-speaking')?.dataset.speakerId ?? null,
+      progress: document.getElementById('progress-bar')?.getAttribute('aria-valuenow'),
+      replayLabel: document.getElementById('btn-play-label')?.textContent,
+      errorVisible: !document.getElementById('error-banner')?.classList.contains('hidden')
+    })`;
+    const snapshot = async () => JSON.parse(await evaluate(snapshotExpression));
+    const waitFor = async (predicate, timeoutMs = 5000) => {
+      const deadline = Date.now() + timeoutMs;
+      let current;
+      while (Date.now() < deadline) {
+        current = await snapshot();
+        if (predicate(current)) return current;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      throw new Error(`Timed out waiting for browser state: ${JSON.stringify(current)}`);
+    };
+
     // Wait until document.readyState === 'complete' and #app is initialized
     for (let i = 0; i < 20; i++) {
       const initialized = await evaluate('Boolean(document.getElementById("app")?.dataset?.initialized)');
@@ -174,63 +196,48 @@ export async function runSmokeTest() {
 
     console.log('[5/5] Executing real UI interactions in browser...');
 
-    // Interaction 1: Real User Click on Play Button
-    console.log('  -> Interaction 1: Clicking Play button in browser...');
+    // Verify pause/resume/restart against an actual recorded clip.
+    console.log('  -> Interaction 1: Play, pause, resume and restart recorded audio...');
     await evaluate('document.getElementById("btn-play").click()');
-
-    // Wait for the browser audio attempt to trigger load error for pending clip
-    await new Promise((r) => setTimeout(r, 600));
-
-    const bannerVisible = await evaluate('!document.getElementById("error-banner").classList.contains("hidden")');
-    const playLabelAfterClick = await evaluate('document.getElementById("btn-play-label").textContent');
-    const stateBadgeText = await evaluate('document.getElementById("playback-state-text").textContent');
-    const errorText = await evaluate('document.getElementById("error-message").textContent');
-
-    if (!bannerVisible) throw new Error('Interaction 1 FAIL: Error banner did not become visible after clicking Play');
-    if (playLabelAfterClick !== 'Retry') throw new Error(`Interaction 1 FAIL: Expected Play label to change to 'Retry', got '${playLabelAfterClick}'`);
-    if (stateBadgeText !== 'Error') throw new Error(`Interaction 1 FAIL: Expected state badge to show 'Error', got '${stateBadgeText}'`);
-    console.log(`  ✔ PASS: Play click triggered playback attempt; UI transitioned to error state (${playLabelAfterClick}) with message: "${errorText}"`);
-
-    // Interaction 2: Real User Click on Dismiss Error Button
-    console.log('  -> Interaction 2: Clicking Dismiss button on error banner...');
-    await evaluate('document.getElementById("btn-dismiss-error").click()');
-    await new Promise((r) => setTimeout(r, 100));
-
-    const bannerHidden = await evaluate('document.getElementById("error-banner").classList.contains("hidden")');
-    if (!bannerHidden) throw new Error('Interaction 2 FAIL: Error banner was not hidden after clicking Dismiss');
-    console.log('  ✔ PASS: Dismiss click hid the error banner as expected');
-
-    // Interaction 3: Real User Click on Restart Button
-    console.log('  -> Interaction 3: Clicking Restart button...');
+    await waitFor((view) => view.state === 'Playing' && view.activeIndex === '0');
+    await evaluate('document.getElementById("btn-pause").click()');
+    await waitFor((view) => view.state === 'Paused');
+    await evaluate('document.getElementById("btn-play").click()');
+    await waitFor((view) => view.state === 'Playing');
     await evaluate('document.getElementById("btn-restart").click()');
-    await new Promise((r) => setTimeout(r, 600));
+    await waitFor((view) => view.state === 'Playing' && view.activeIndex === '0');
+    console.log('  ✔ PASS: Pause/resume preserved playback and Restart returned to line one');
 
-    const restartBtnExists = await evaluate('!document.getElementById("btn-restart").disabled');
-    if (!restartBtnExists) throw new Error('Interaction 3 FAIL: Restart button unexpectedly disabled');
-    console.log('  ✔ PASS: Restart button click handled cleanly');
-
-    // Interaction 4: Verify completed-player controls allow Replay
-    console.log('  -> Interaction 4: Verifying completed-state replay controls...');
-    await evaluate(`
-      const playBtn = document.getElementById("btn-play");
-      const playLabel = document.getElementById("btn-play-label");
-      const restartBtn = document.getElementById("btn-restart");
-
-      // Verify controls respond to completed state
-      playBtn.disabled = false;
-      playLabel.textContent = "Replay";
-      playBtn.setAttribute("aria-label", "Replay meeting audio from beginning");
-      restartBtn.disabled = false;
-    `);
-
-    const replayBtnLabel = await evaluate('document.getElementById("btn-play-label").textContent');
-    const replayBtnDisabled = await evaluate('document.getElementById("btn-play").disabled');
-    const restartBtnDisabled = await evaluate('document.getElementById("btn-restart").disabled');
-
-    if (replayBtnLabel !== 'Replay' || replayBtnDisabled || restartBtnDisabled) {
-      throw new Error(`Interaction 4 FAIL: Completed state controls not configured for replay`);
+    console.log('  -> Interaction 2: Listening through all six recorded lines...');
+    const observedLines = new Set();
+    const deadline = Date.now() + 90000;
+    let finalView;
+    while (Date.now() < deadline) {
+      finalView = await snapshot();
+      if (finalView.activeIndex !== null) {
+        observedLines.add(Number(finalView.activeIndex));
+        if (finalView.activeSpeaker !== finalView.speakingSpeaker) {
+          throw new Error(`Speaker highlight mismatch on line ${finalView.activeIndex}: ${JSON.stringify(finalView)}`);
+        }
+      }
+      if (finalView.state === 'Finished') break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    console.log('  ✔ PASS: Completed state enables replay via both Play ("Replay") and Restart');
+    if (finalView?.state !== 'Finished') throw new Error(`Playback did not complete: ${JSON.stringify(finalView)}`);
+    if ([...observedLines].sort().join(',') !== '0,1,2,3,4,5') {
+      throw new Error(`Did not observe all six active transcript lines: ${[...observedLines]}`);
+    }
+    if (finalView.progress !== '100' || finalView.replayLabel !== 'Replay' || finalView.errorVisible) {
+      throw new Error(`Unexpected completed UI: ${JSON.stringify(finalView)}`);
+    }
+    console.log('  ✔ PASS: All six prerecorded clips played with matching speaker highlights; UI reached Finished');
+
+    console.log('  -> Interaction 3: Replay from the completed state...');
+    await evaluate('document.getElementById("btn-play").click()');
+    await waitFor((view) => view.state === 'Playing' && view.activeIndex === '0');
+    await evaluate('document.getElementById("btn-pause").click()');
+    await waitFor((view) => view.state === 'Paused');
+    console.log('  ✔ PASS: Replay started again from the first recorded line');
 
     console.log('--- Browser Smoke Test Passed Successfully! ---');
   } finally {

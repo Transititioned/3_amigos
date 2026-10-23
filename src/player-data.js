@@ -1,5 +1,4 @@
-// Audio files are deliberately not fabricated. Add the approved recordings at
-// these paths and update each audioSrc when they are available.
+// Each dialogue line points to its bundled prerecorded clip under /audio/.
 export const demoScript = {
   id: 'demo-meeting',
   title: 'The Missing Monday',
