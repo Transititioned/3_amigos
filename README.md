@@ -40,6 +40,16 @@ python -m pip install -r requirements-tts.txt
 python scripts/generate_audio.py
 ```
 
+Before synthesis, the generator automatically expands common English speech
+contractions in every line, independent of speaker. The transcript remains
+unchanged. An optional `spokenText` field can supply alternate wording and
+contractions in that wording are expanded too. Regenerate only selected lines
+with:
+
+```sh
+python scripts/generate_audio.py --line-id line-4 --line-id line-5 --line-id line-6
+```
+
 Generation uses `edge-tts`, an unofficial Python client for Microsoft's online
 Edge text-to-speech service. It sends the dialogue text and selected voice to
 that online service. The clips are for this prototype; review the service's

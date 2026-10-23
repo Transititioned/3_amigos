@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPlayer } from '../src/player.js';
-import { demoScript, validateScript } from '../src/player-data.js';
+import { demoScript, getSpokenText, validateScript } from '../src/player-data.js';
 
 class FakeAudio {
   constructor(src) { this.src = src; this.currentTime = 0; this.duration = 10; this.events = new Map(); this.paused = true; }
@@ -27,6 +27,24 @@ function fixture() {
 test('validates script and rejects unknown speakers', () => {
   assert.equal(validateScript(demoScript), demoScript);
   assert.throws(() => validateScript({ ...demoScript, lines: [{ ...demoScript.lines[0], speakerId: 'nobody' }] }), /Unknown speaker/);
+});
+
+test('expands speech contractions for every speaker without changing transcript text', () => {
+  const maraLine = demoScript.lines.find(({ id }) => id === 'line-4');
+  const leoLine = demoScript.lines.find(({ id }) => id === 'line-5');
+  const beaLine = demoScript.lines.find(({ id }) => id === 'line-6');
+  assert.equal(maraLine.speakerId, 'mara');
+  assert.equal(maraLine.text, 'Let’s make one small plan so tomorrow doesn’t become Monday three.');
+  assert.equal(getSpokenText(maraLine), 'Let us make one small plan so tomorrow does not become Monday three.');
+  assert.equal(leoLine.speakerId, 'leo');
+  assert.equal(leoLine.text, 'I’ll send the three-line recap before lunch. Ambitious, but achievable.');
+  assert.equal(getSpokenText(leoLine), 'I will send the three-line recap before lunch. Ambitious, but achievable.');
+  assert.equal(beaLine.speakerId, 'bea');
+  assert.equal(beaLine.text, 'Excellent. I’ll believe it when the recap has a timestamp.');
+  assert.equal(getSpokenText(beaLine), 'Excellent. I will believe it when the recap has a timestamp.');
+  assert.equal(getSpokenText({ text: "We'll finish; she can't wait." }), 'We will finish; she cannot wait.');
+  assert.equal(getSpokenText({ text: 'We’ll finish; she can’t wait.' }), 'We will finish; she cannot wait.');
+  assert.equal(getSpokenText({ text: "I'll go", spokenText: "I'll run" }), 'I will run');
 });
 
 test('sequences clips and emits the active transcript line', async () => {

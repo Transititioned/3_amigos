@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import os
 import subprocess
@@ -23,8 +24,10 @@ VOICE_BY_SPEAKER = {
 def load_script() -> dict:
     """Import the actual player script so the transcript is not duplicated."""
     source = (
-        "import { demoScript } from './src/player-data.js'; "
-        "console.log(JSON.stringify(demoScript));"
+        "import { demoScript, getSpokenText } from './src/player-data.js'; "
+        "const ttsScript = {...demoScript, lines: demoScript.lines.map(line => "
+        "({...line, ttsText: getSpokenText(line)}))}; "
+        "console.log(JSON.stringify(ttsScript));"
     )
     result = subprocess.run(
         ["node", "--input-type=module", "-e", source],
@@ -48,9 +51,15 @@ def has_mp3_frame(path: Path) -> bool:
     )
 
 
-async def generate() -> None:
+async def generate(line_ids: list[str] | None = None) -> None:
     script = load_script()
     lines = script["lines"]
+    if line_ids:
+        selected_ids = set(line_ids)
+        lines = [line for line in lines if line["id"] in selected_ids]
+        missing_ids = selected_ids - {line["id"] for line in lines}
+        if missing_ids:
+            raise ValueError(f"Unknown line IDs: {sorted(missing_ids)}")
     used_speakers = {line["speakerId"] for line in lines}
     missing_voices = used_speakers - VOICE_BY_SPEAKER.keys()
     if missing_voices:
@@ -68,7 +77,7 @@ async def generate() -> None:
         voice = VOICE_BY_SPEAKER[line["speakerId"]]
         print(f"Generating {audio_src} ({line['speakerId']}, {voice})", flush=True)
         try:
-            await edge_tts.Communicate(line["text"], voice=voice).save(str(temporary))
+            await edge_tts.Communicate(line["ttsText"], voice=voice).save(str(temporary))
             if temporary.stat().st_size == 0 or not has_mp3_frame(temporary):
                 raise RuntimeError(f"Generated output is empty or not a valid MP3: {temporary}")
             temporary.replace(output)
@@ -79,8 +88,15 @@ async def generate() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--line-id",
+        action="append",
+        help="Generate only this line ID (repeat to select multiple lines; default: all)",
+    )
+    args = parser.parse_args()
     try:
-        asyncio.run(generate())
+        asyncio.run(generate(args.line_id))
     except Exception as error:
         print(f"Audio generation failed: {type(error).__name__}: {error}", file=os.sys.stderr)
         raise
